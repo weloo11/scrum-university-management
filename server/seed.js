@@ -143,7 +143,9 @@ const seed = async () => {
       prerequisites: [],
       instructor: professor._id,
       assignedTAs: [ta._id],
-      credits: 3
+      credits: 3,
+      studyYear: 3,
+      semester: 1
     },
     {
       courseCode: "CS330",
@@ -155,7 +157,9 @@ const seed = async () => {
       prerequisites: ["CS301"],
       instructor: professor._id,
       assignedTAs: [ta._id],
-      credits: 3
+      credits: 3,
+      studyYear: 3,
+      semester: 2
     },
     {
       courseCode: "CS355",
@@ -167,7 +171,51 @@ const seed = async () => {
       prerequisites: ["CS301"],
       instructor: professor._id,
       assignedTAs: [],
-      credits: 3
+      credits: 3,
+      studyYear: 4,
+      semester: 1
+    },
+    {
+      courseCode: "CS101",
+      courseName: "Programming Fundamentals",
+      type: "core",
+      program: "Computer Science",
+      capacity: 45,
+      enrolledStudents: [],
+      prerequisites: [],
+      instructor: professor._id,
+      assignedTAs: [ta._id],
+      credits: 3,
+      studyYear: 1,
+      semester: 1
+    },
+    {
+      courseCode: "CS220",
+      courseName: "Data Structures",
+      type: "core",
+      program: "Computer Science",
+      capacity: 40,
+      enrolledStudents: [],
+      prerequisites: ["CS101"],
+      instructor: professor._id,
+      assignedTAs: [ta._id],
+      credits: 3,
+      studyYear: 2,
+      semester: 1
+    },
+    {
+      courseCode: "CS410",
+      courseName: "Cloud Computing",
+      type: "elective",
+      program: "Computer Science",
+      capacity: 25,
+      enrolledStudents: [],
+      prerequisites: ["CS330"],
+      instructor: professor._id,
+      assignedTAs: [],
+      credits: 3,
+      studyYear: 4,
+      semester: 2
     },
     {
       courseCode: "IS210",
@@ -179,7 +227,9 @@ const seed = async () => {
       prerequisites: [],
       instructor: professor._id,
       assignedTAs: [ta._id],
-      credits: 3
+      credits: 3,
+      studyYear: 2,
+      semester: 1
     }
   ]);
 
@@ -252,7 +302,7 @@ const seed = async () => {
       GPA: 3.45,
       gpa: 3.45,
       enrolledCourses: [
-        { course: courses[3]._id, courseCode: courses[3].courseCode, courseName: courses[3].courseName, type: courses[3].type, grade: "B+", credits: 3 }
+        { course: courses[6]._id, courseCode: courses[6].courseCode, courseName: courses[6].courseName, type: courses[6].type, grade: "B+", credits: 3 }
       ],
       courses: [
         { code: "IS210", title: "Systems Analysis", grade: "B+", credits: 3 },
@@ -274,7 +324,7 @@ const seed = async () => {
       department: "Computer Science",
       officeLocation: "C-204",
       officeHours: "Sun/Tue 10:00-12:00",
-      assignedCourses: [courses[0]._id, courses[1]._id, courses[2]._id, courses[3]._id],
+      assignedCourses: courses.map((course) => course._id),
       hrData: { title: "Associate Professor", employmentType: "Full-time", salaryBand: "P3" }
     },
     {
@@ -286,7 +336,7 @@ const seed = async () => {
       department: "Computer Science",
       officeLocation: "C-118",
       officeHours: "Mon/Wed 13:00-15:00",
-      assignedCourses: [courses[0]._id, courses[1]._id],
+      assignedCourses: [courses[0]._id, courses[1]._id, courses[3]._id, courses[4]._id],
       hrData: { title: "Teaching Assistant", employmentType: "Part-time", salaryBand: "T1" }
     },
     {
@@ -303,14 +353,32 @@ const seed = async () => {
     }
   ]);
 
-  const assessment = await Assessment.create({
-    course: courses[0]._id,
-    title: "Midterm Exam",
-    type: "exam",
-    date: new Date("2026-05-20"),
-    maxMarks: 100,
-    createdBy: professor._id
-  });
+  const [assessment] = await Assessment.create([
+    {
+      course: courses[0]._id,
+      title: "Midterm Exam",
+      type: "exam",
+      date: new Date("2026-05-20"),
+      maxMarks: 100,
+      createdBy: professor._id
+    },
+    {
+      course: courses[0]._id,
+      title: "Requirements Quiz",
+      type: "quiz",
+      date: new Date("2026-05-12"),
+      maxMarks: 20,
+      createdBy: professor._id
+    },
+    {
+      course: courses[1]._id,
+      title: "SQL Assignment",
+      type: "assignment",
+      date: new Date("2026-05-18"),
+      maxMarks: 50,
+      createdBy: professor._id
+    }
+  ]);
 
   await Grade.create({
     student: studentOne._id,

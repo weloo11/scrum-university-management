@@ -51,7 +51,19 @@ router.get("/courses", authorize(...academicRoles), async (req, res, next) => {
 
 router.post("/courses", authorize("admin"), async (req, res, next) => {
   try {
-    const { courseCode, courseName, type, program, capacity, prerequisites = [], instructor, assignedTAs = [], credits = 3 } = req.body;
+    const {
+      courseCode,
+      courseName,
+      type,
+      program,
+      capacity,
+      prerequisites = [],
+      instructor,
+      assignedTAs = [],
+      credits = 3,
+      studyYear = 1,
+      semester = 1
+    } = req.body;
     if (!courseCode || !courseName || !type || !program || !capacity) {
       return sendResponse(res, 400, null, "Course code, name, type, program, and capacity are required");
     }
@@ -65,7 +77,9 @@ router.post("/courses", authorize("admin"), async (req, res, next) => {
       prerequisites,
       instructor: instructor || undefined,
       assignedTAs,
-      credits
+      credits,
+      studyYear,
+      semester
     });
     return sendResponse(res, 201, course, "Course created");
   } catch (error) {
@@ -140,6 +154,18 @@ router.post("/courses/:id/enroll", authorize("student"), async (req, res, next) 
 router.get("/assessments", authorize(...academicRoles), async (req, res, next) => {
   try {
     const filters = req.query.course ? { course: req.query.course } : {};
+    if (req.user.role === "student") {
+      const record = await StudentRecord.findOne({ userId: req.user._id }).select("enrolledCourses");
+      const enrolledCourseIds = (record?.enrolledCourses || [])
+        .map((item) => item.course)
+        .filter(Boolean);
+
+      if (req.query.course && !enrolledCourseIds.some((courseId) => courseId.toString() === req.query.course)) {
+        return sendResponse(res, 403, null, "You can only view assessments for enrolled courses");
+      }
+
+      filters.course = req.query.course || { $in: enrolledCourseIds };
+    }
     if (["professor", "TA"].includes(req.user.role)) {
       const profiles = await StaffProfile.findOne({ user: req.user._id }).select("assignedCourses");
       filters.course = { $in: profiles?.assignedCourses || [] };

@@ -3,9 +3,10 @@ import api from "../api/client.js";
 import { useAuth } from "../context/AuthContext.jsx";
 import { useToast } from "../context/ToastContext.jsx";
 
-const emptyCourse = { courseCode: "", courseName: "", type: "core", program: "", capacity: 30, prerequisites: "", instructor: "", credits: 3 };
+const emptyCourse = { courseCode: "", courseName: "", type: "core", program: "", capacity: 30, prerequisites: "", instructor: "", credits: 3, studyYear: 1, semester: 1 };
 const emptyAnnouncement = { title: "", body: "", category: "", targetAudience: "all" };
 const emptyEvent = { title: "", description: "", date: "", time: "", location: "" };
+const API_ROOT = (import.meta.env.VITE_API_URL || "http://localhost:5001/api").replace("/api", "");
 
 const useLoad = (loader, deps = []) => {
   useEffect(() => {
@@ -13,7 +14,18 @@ const useLoad = (loader, deps = []) => {
   }, deps);
 };
 
-const CourseCard = ({ course, onEnroll }) => (
+const formatAssessmentDate = (date) => date ? new Date(date).toLocaleDateString() : "No date";
+
+const groupCoursesByStudyPeriod = (courses) => {
+  return courses.reduce((groups, course) => {
+    const key = `Year ${course.studyYear || 1} | Semester ${course.semester || 1}`;
+    if (!groups[key]) groups[key] = [];
+    groups[key].push(course);
+    return groups;
+  }, {});
+};
+
+const CourseCard = ({ course, onEnroll, assessments = [], isEnrolled = false }) => (
   <article className="panel">
     <div className="flex flex-wrap items-start justify-between gap-3">
       <div>
@@ -24,7 +36,22 @@ const CourseCard = ({ course, onEnroll }) => (
     </div>
     <p className="mt-2 text-sm text-slate-600">Instructor: {course.instructor?.name || "Unassigned"}</p>
     <p className="mt-1 text-sm text-slate-600">Prerequisites: {course.prerequisites?.join(", ") || "None"}</p>
-    {onEnroll && <button className="btn-secondary mt-4" onClick={() => onEnroll(course._id)}>Select Course</button>}
+    <div className="mt-3 rounded-md bg-slate-50 p-3">
+      <h4 className="text-sm font-semibold text-ink">Assessments</h4>
+      {assessments.length > 0 ? (
+        <div className="mt-2 space-y-2">
+          {assessments.map((assessment) => (
+            <div key={assessment._id} className="text-sm">
+              <span className="font-medium capitalize">{assessment.type}</span>
+              <span className="text-slate-600"> | {assessment.title} | {formatAssessmentDate(assessment.date)} | {assessment.maxMarks} marks</span>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <p className="mt-1 text-sm text-slate-500">{isEnrolled ? "No assessments posted yet." : "Enroll to view posted assessments."}</p>
+      )}
+    </div>
+    {onEnroll && <button className="btn-secondary mt-4 disabled:cursor-not-allowed disabled:opacity-50" disabled={isEnrolled} onClick={() => onEnroll(course._id)}>{isEnrolled ? "Already enrolled" : "Select Course"}</button>}
   </article>
 );
 
@@ -74,6 +101,8 @@ export const AdminOperationsPage = () => {
         ...courseForm,
         capacity: Number(courseForm.capacity),
         credits: Number(courseForm.credits),
+        studyYear: Number(courseForm.studyYear),
+        semester: Number(courseForm.semester),
         prerequisites: courseForm.prerequisites.split(",").map((item) => item.trim()).filter(Boolean),
         instructor: courseForm.instructor || undefined
       });
@@ -157,6 +186,10 @@ export const AdminOperationsPage = () => {
             <input className="field" type="number" value={courseForm.capacity} onChange={(event) => setCourseForm({ ...courseForm, capacity: event.target.value })} />
             <input className="field" type="number" value={courseForm.credits} onChange={(event) => setCourseForm({ ...courseForm, credits: event.target.value })} />
           </div>
+          <div className="grid grid-cols-2 gap-2">
+            <input className="field" type="number" min="1" max="8" value={courseForm.studyYear} onChange={(event) => setCourseForm({ ...courseForm, studyYear: event.target.value })} placeholder="Study year" />
+            <input className="field" type="number" min="1" max="3" value={courseForm.semester} onChange={(event) => setCourseForm({ ...courseForm, semester: event.target.value })} placeholder="Semester" />
+          </div>
           <input className="field" placeholder="Prerequisites comma-separated" value={courseForm.prerequisites} onChange={(event) => setCourseForm({ ...courseForm, prerequisites: event.target.value })} />
           <select className="field" value={courseForm.instructor} onChange={(event) => setCourseForm({ ...courseForm, instructor: event.target.value })}>
             <option value="">Assign instructor</option>
@@ -208,7 +241,7 @@ export const AdminOperationsPage = () => {
         </div>
         <div className="panel">
           <h2 className="mb-3 text-xl font-bold">Transcript Requests</h2>
-          <div className="space-y-3">{transcripts.map((request) => <div key={request._id} className="rounded-md border p-3 text-sm"><b>{request.studentId?.name}</b><p className="capitalize">{request.requestStatus || request.status}</p><button className="btn-primary mt-2 py-1" onClick={() => generateTranscript(request._id)}>Generate</button></div>)}</div>
+          <div className="space-y-3">{transcripts.map((request) => <div key={request._id} className="rounded-md border p-3 text-sm"><b>{request.studentId?.name}</b><p className="capitalize">{request.requestStatus || request.status}</p><div className="mt-2 flex flex-wrap gap-2"><button className="btn-primary py-1" onClick={() => generateTranscript(request._id)}>Generate</button>{request.downloadUrl && <a className="btn-secondary py-1" href={`${API_ROOT}${request.downloadUrl}`} target="_blank" rel="noreferrer">Open PDF</a>}</div></div>)}</div>
         </div>
       </section>
 
@@ -223,16 +256,20 @@ export const StudentAcademicPage = () => {
   const [record, setRecord] = useState(null);
   const [courses, setCourses] = useState([]);
   const [grades, setGrades] = useState([]);
+  const [assessments, setAssessments] = useState([]);
+  const [transcriptRequests, setTranscriptRequests] = useState([]);
   const [staff, setStaff] = useState([]);
   const [announcements, setAnnouncements] = useState([]);
   const [events, setEvents] = useState([]);
 
   const load = async () => {
     try {
-      const [recordRes, coursesRes, gradesRes, staffRes, announcementsRes, eventsRes] = await Promise.all([
+      const [recordRes, coursesRes, gradesRes, assessmentsRes, transcriptsRes, staffRes, announcementsRes, eventsRes] = await Promise.all([
         api.get("/records/me").catch(() => ({ data: { data: null } })),
         api.get("/academic/courses"),
         api.get("/academic/grades"),
+        api.get("/academic/assessments"),
+        api.get("/transcripts/my"),
         api.get("/staff"),
         api.get("/community/announcements"),
         api.get("/community/events")
@@ -240,6 +277,8 @@ export const StudentAcademicPage = () => {
       setRecord(recordRes.data.data);
       setCourses(coursesRes.data.data);
       setGrades(gradesRes.data.data);
+      setAssessments(assessmentsRes.data.data);
+      setTranscriptRequests(transcriptsRes.data.data);
       setStaff(staffRes.data.data);
       setAnnouncements(announcementsRes.data.data);
       setEvents(eventsRes.data.data);
@@ -264,12 +303,29 @@ export const StudentAcademicPage = () => {
     try {
       await api.post("/transcripts/request");
       showToast("Transcript requested");
+      load();
     } catch (error) {
       showToast(error.message, "error");
     }
   };
 
-  const programCourses = record ? courses.filter((course) => course.program === (record.program || record.department)) : courses;
+  const programName = record?.program || record?.department;
+  const programCourses = record ? courses.filter((course) => course.program?.toLowerCase() === programName?.toLowerCase()) : courses;
+  const coreCourses = programCourses.filter((course) => course.type === "core");
+  const electiveCourses = programCourses.filter((course) => course.type === "elective");
+  const enrolledCourseIds = new Set((record?.enrolledCourses || []).map((item) => (item.course?._id || item.course)?.toString()).filter(Boolean));
+  const assessmentsByCourse = assessments.reduce((groups, assessment) => {
+    const courseId = assessment.course?._id || assessment.course;
+    if (!courseId) return groups;
+    if (!groups[courseId]) groups[courseId] = [];
+    groups[courseId].push(assessment);
+    return groups;
+  }, {});
+  const studyPlanGroups = groupCoursesByStudyPeriod([...programCourses].sort((a, b) => (
+    (a.studyYear || 1) - (b.studyYear || 1)
+    || (a.semester || 1) - (b.semester || 1)
+    || a.courseCode.localeCompare(b.courseCode)
+  )));
 
   return (
     <main className="mx-auto max-w-7xl space-y-6 px-4 py-8">
@@ -278,9 +334,60 @@ export const StudentAcademicPage = () => {
         <button className="btn-primary" onClick={requestTranscript}>Request Transcript</button>
       </div>
       {record && <section className="panel grid gap-3 md:grid-cols-4"><div><span className="text-sm text-slate-500">Name</span><b className="block">{record.fullName || record.name}</b></div><div><span className="text-sm text-slate-500">Program</span><b className="block">{record.program || record.department}</b></div><div><span className="text-sm text-slate-500">Level</span><b className="block">{record.level || record.year}</b></div><div><span className="text-sm text-slate-500">GPA</span><b className="block">{record.GPA ?? record.gpa}</b></div></section>}
-      <section><h2 className="mb-3 text-xl font-bold">Course Catalog</h2><div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">{programCourses.map((course) => <CourseCard key={course._id} course={course} onEnroll={enroll} />)}</div></section>
+      <section className="grid gap-6 lg:grid-cols-[1.5fr_1fr]">
+        <div className="panel">
+          <h2 className="text-xl font-bold">Study Plan</h2>
+          <div className="mt-4 space-y-4">
+            {Object.entries(studyPlanGroups).map(([period, periodCourses]) => (
+              <div key={period} className="rounded-md border border-slate-200 p-3">
+                <h3 className="font-semibold text-ink">{period}</h3>
+                <div className="mt-2 space-y-2">
+                  {periodCourses.map((course) => (
+                    <div key={course._id} className="flex flex-wrap items-center justify-between gap-2 text-sm">
+                      <span>{course.courseCode} - {course.courseName}</span>
+                      <span className={`badge ${course.type === "core" ? "bg-slate-100 text-slate-700" : "bg-moss/10 text-moss"}`}>{course.type}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+            {programCourses.length === 0 && <p className="text-sm text-slate-500">No study plan courses found for this program.</p>}
+          </div>
+        </div>
+        <div className="panel">
+          <h2 className="text-xl font-bold">Transcripts</h2>
+          <div className="mt-4 space-y-3">
+            {transcriptRequests.map((request) => (
+              <div key={request._id} className="rounded-md border border-slate-200 p-3 text-sm">
+                <div className="font-semibold capitalize">{request.requestStatus || request.status}</div>
+                <div className="text-slate-500">{new Date(request.requestedAt).toLocaleString()}</div>
+                {request.downloadUrl ? (
+                  <a className="mt-2 inline-flex font-semibold text-moss" href={`${API_ROOT}${request.downloadUrl}`} target="_blank" rel="noreferrer">Download transcript</a>
+                ) : (
+                  <p className="mt-2 text-slate-500">Waiting for admin generation.</p>
+                )}
+              </div>
+            ))}
+            {transcriptRequests.length === 0 && <p className="text-sm text-slate-500">No transcript requests yet.</p>}
+          </div>
+        </div>
+      </section>
+      <section>
+        <h2 className="mb-3 text-xl font-bold">Core Courses</h2>
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+          {coreCourses.map((course) => <CourseCard key={course._id} course={course} onEnroll={enroll} isEnrolled={enrolledCourseIds.has(course._id)} assessments={assessmentsByCourse[course._id] || []} />)}
+        </div>
+        {coreCourses.length === 0 && <p className="text-sm text-slate-500">No core courses found.</p>}
+      </section>
+      <section>
+        <h2 className="mb-3 text-xl font-bold">Electives</h2>
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+          {electiveCourses.map((course) => <CourseCard key={course._id} course={course} onEnroll={enroll} isEnrolled={enrolledCourseIds.has(course._id)} assessments={assessmentsByCourse[course._id] || []} />)}
+        </div>
+        {electiveCourses.length === 0 && <p className="text-sm text-slate-500">No electives found.</p>}
+      </section>
       <section className="grid gap-6 lg:grid-cols-2">
-        <div className="panel"><h2 className="mb-3 text-xl font-bold">Grades & Feedback</h2>{grades.map((grade) => <div key={grade._id} className="border-b py-2 text-sm"><b>{grade.course?.courseCode} - {grade.assessment?.title}</b><p>Grade: {grade.grade}</p><p className="text-slate-600">{grade.feedback}</p></div>)}</div>
+        <div className="panel"><h2 className="mb-3 text-xl font-bold">Grades & Feedback</h2>{grades.map((grade) => <div key={grade._id} className="border-b py-2 text-sm"><b>{grade.course?.courseCode} - {grade.assessment?.title}</b><p>Grade: {grade.grade}</p><p className="text-slate-600">{grade.feedback}</p></div>)}{grades.length === 0 && <p className="text-sm text-slate-500">No grades posted yet.</p>}</div>
         <div className="panel"><h2 className="mb-3 text-xl font-bold">Staff Directory</h2>{staff.map((profile) => <div key={profile._id} className="border-b py-2 text-sm"><b>{profile.fullName}</b><p>{profile.role} | {profile.department}</p><p>{profile.email} | {profile.officeHours}</p></div>)}</div>
       </section>
       <section className="grid gap-4 md:grid-cols-2">{announcements.map((item) => <article key={item._id} className="panel"><h3 className="font-bold">{item.title}</h3><p className="mt-2 text-sm">{item.body}</p></article>)}{events.map((item) => <article key={item._id} className="panel"><h3 className="font-bold">{item.title}</h3><p className="text-sm text-slate-600">{item.date} {item.time} | {item.location}</p></article>)}</section>

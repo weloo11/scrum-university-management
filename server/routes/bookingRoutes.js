@@ -103,12 +103,19 @@ router.put("/:id", authenticate, authorize("student", "admin"), async (req, res,
       date: req.body.date || booking.date,
       startTime: req.body.startTime || booking.startTime,
       endTime: req.body.endTime || booking.endTime,
-      purpose: req.body.purpose || booking.purpose
+      purpose: req.body.purpose?.trim() || booking.purpose
     };
+
+    if (!nextValues.roomId || !nextValues.date || !nextValues.startTime || !nextValues.endTime || !nextValues.purpose) {
+      return sendResponse(res, 400, null, "Room, date, start time, end time, and purpose are required");
+    }
 
     if (!validateBookingTime(nextValues.startTime, nextValues.endTime)) {
       return sendResponse(res, 400, null, "End time must be later than start time");
     }
+
+    const room = await Room.findById(nextValues.roomId);
+    if (!room) return sendResponse(res, 404, null, "Room not found");
 
     if (await hasConflict({ ...nextValues, excludeId: booking._id })) {
       return sendResponse(res, 409, null, "Room is already booked in that time slot");

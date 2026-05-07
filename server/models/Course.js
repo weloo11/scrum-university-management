@@ -56,6 +56,18 @@ const courseSchema = new mongoose.Schema(
       type: Number,
       default: 3,
       min: 0
+    },
+    studyYear: {
+      type: Number,
+      min: 1,
+      max: 8,
+      default: 1
+    },
+    semester: {
+      type: Number,
+      min: 1,
+      max: 3,
+      default: 1
     }
   },
   { timestamps: true }

@@ -11,6 +11,7 @@ const statusClass = {
 const MyBookingsPage = () => {
   const { showToast } = useToast();
   const [bookings, setBookings] = useState([]);
+  const [rooms, setRooms] = useState([]);
   const [editing, setEditing] = useState(null);
 
   const loadBookings = async () => {
@@ -22,8 +23,18 @@ const MyBookingsPage = () => {
     }
   };
 
+  const loadRooms = async () => {
+    try {
+      const response = await api.get("/rooms");
+      setRooms(response.data.data);
+    } catch (error) {
+      showToast(error.message, "error");
+    }
+  };
+
   useEffect(() => {
     loadBookings();
+    loadRooms();
   }, []);
 
   const cancelBooking = async (id) => {
@@ -39,7 +50,14 @@ const MyBookingsPage = () => {
   const saveEdit = async (event) => {
     event.preventDefault();
     try {
-      await api.put(`/bookings/${editing._id}`, editing);
+      const payload = {
+        roomId: editing.roomId,
+        date: editing.date,
+        startTime: editing.startTime,
+        endTime: editing.endTime,
+        purpose: editing.purpose
+      };
+      await api.put(`/bookings/${editing._id}`, payload);
       showToast("Booking updated");
       setEditing(null);
       loadBookings();
@@ -74,7 +92,7 @@ const MyBookingsPage = () => {
                   <td className="p-3"><span className={`badge ${statusClass[booking.status]}`}>{booking.status}</span></td>
                   <td className="p-3">
                     <div className="flex gap-2">
-                      <button className="btn-secondary py-1" disabled={booking.status !== "pending"} onClick={() => setEditing({ ...booking, roomId: booking.roomId?._id })}>Edit</button>
+                      <button className="btn-secondary py-1 disabled:cursor-not-allowed disabled:opacity-50" disabled={booking.status !== "pending"} onClick={() => setEditing({ ...booking, roomId: booking.roomId?._id || "", date: booking.date?.slice(0, 10) || "" })}>Edit</button>
                       <button className="btn-danger py-1" onClick={() => cancelBooking(booking._id)}>Cancel</button>
                     </div>
                   </td>
@@ -91,6 +109,10 @@ const MyBookingsPage = () => {
         <div className="fixed inset-0 z-40 flex items-center justify-center bg-slate-950/50 p-4">
           <form onSubmit={saveEdit} className="panel w-full max-w-lg space-y-3">
             <h2 className="text-xl font-bold text-ink">Edit Booking</h2>
+            <select className="field" value={editing.roomId} onChange={(event) => setEditing({ ...editing, roomId: event.target.value })} required>
+              <option value="">Select room</option>
+              {rooms.map((room) => <option key={room._id} value={room._id}>{room.name}</option>)}
+            </select>
             <input className="field" type="date" value={editing.date} onChange={(event) => setEditing({ ...editing, date: event.target.value })} />
             <div className="grid grid-cols-2 gap-2">
               <input className="field" type="time" value={editing.startTime} onChange={(event) => setEditing({ ...editing, startTime: event.target.value })} />
